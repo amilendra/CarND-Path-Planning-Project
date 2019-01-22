@@ -192,8 +192,8 @@ int main() {
   // start in lane 1;
   int lane = 1;
 
-  // Have a reference velocoty to target
-  double ref_vel = 49.5;  // mph
+  // Have a reference velocity to target
+  double ref_vel = 0;  // mph
 
   h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
                &map_waypoints_dx, &map_waypoints_dy, &lane,
@@ -236,25 +236,58 @@ int main() {
 
           int prev_size = previous_path_x.size();
 
+          if(prev_size > 0)
+          {
+            car_s = end_path_s;
+          }
+          bool too_close = false;
+
+          // find ref_v to use
+          for(int i = 0; i < sensor_fusion.size(); i++)
+          {
+            // car is in my lane
+            float d = sensor_fusion[i][6];
+            if(d < (2+4*lane+2) && d > (2+4*lane-2))
+            {
+              double vx = sensor_fusion[i][3];
+              double vy = sensor_fusion[i][4];
+              double check_speed = sqrt(vx*vx+vy*vy);
+              double check_car_s = sensor_fusion[i][5];
+
+              check_car_s += ((double)prev_size*0.02*check_speed); // if using previous points can prohect s value out
+              // check s values greater than min and s gap
+              if((check_car_s > car_s) && ((check_car_s - car_s)<30))
+              {
+                // Do some logic here, lower reference velocity so we dont crash into the car infront of us, could
+                // also flag to try to change lanes
+                too_close = true;
+                if(lane >0)
+                {
+                  lane--;
+                }
+              }
+            }
+          }
+
           json msgJson;
 
 #if 0
-          	vector<double> next_x_vals;
-          	vector<double> next_y_vals;
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-						double dist_inc = 0.5;
-						for(int i = 0; i < 50; i++)
-						{
-							double next_s = car_s + (i+1)*dist_inc;
-							double next_d = 6;
-							vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+          double dist_inc = 0.3;
+          for(int i = 0; i < 50; i++)
+          {
+            double next_s = car_s + (i+1)*dist_inc;
+            double next_d = 6;
+            vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
-							next_x_vals.push_back(xy[0]);
-							next_y_vals.push_back(xy[1]);
-						}
-#endif
+            next_x_vals.push_back(xy[0]);
+            next_y_vals.push_back(xy[1]);
+          }
+#else
           vector<double> ptsx;
           vector<double> ptsy;
 
@@ -279,6 +312,8 @@ int main() {
           }
           // Use the previous path's end point as starting reference
           else {
+
+            // Redefine reference state as previous path end point
             ref_x = previous_path_x[prev_size - 1];
             ref_y = previous_path_y[prev_size - 1];
 
@@ -349,6 +384,14 @@ int main() {
           double x_add_on = 0;
 
           for (int i = 1; i <= 50 - previous_path_x.size(); i++) {
+            if(too_close)
+            {
+              ref_vel -= 0.224;
+            }
+            else if(ref_vel < 49.5)
+            {
+              ref_vel += 0.224;
+            }
             double N = (target_dist / (0.02 * ref_vel / 2.24));
             double x_point = x_add_on + (target_x) / N;
             double y_point = s(x_point);
@@ -360,7 +403,7 @@ int main() {
 
             // rotate back to normal after rotating it earlier
             x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
-            y_point = (y_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
+            y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
 
             x_point += ref_x;
             y_point += ref_y;
@@ -368,6 +411,7 @@ int main() {
             next_x_vals.push_back(x_point);
             next_y_vals.push_back(y_point);
           }
+#endif
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
