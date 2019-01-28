@@ -194,10 +194,11 @@ int main() {
 
   // Have a reference velocity to target
   double ref_vel = 0;  // mph
+  double target_vel = 49.85;  // mph
 
   h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
                &map_waypoints_dx, &map_waypoints_dy, &lane,
-               &ref_vel](uWS::WebSocket<uWS::SERVER> ws, char *data,
+               &ref_vel, &target_vel](uWS::WebSocket<uWS::SERVER> ws, char *data,
                          size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -256,15 +257,46 @@ int main() {
 
               check_car_s += ((double)prev_size*0.02*check_speed); // if using previous points can prohect s value out
               // check s values greater than min and s gap
-              if((check_car_s > car_s) && ((check_car_s - car_s)<30))
+              if((check_car_s > car_s) && ((check_car_s - car_s)<60))
               {
-                // Do some logic here, lower reference velocity so we dont crash into the car infront of us, could
-                // also flag to try to change lanes
+                // flag to try to change lanes
                 too_close = true;
-                if(lane >0)
+                if(target_vel > check_car_s)
+                  target_vel = check_car_s;
+              }
+            }
+          }
+
+          if(too_close)
+          {
+            // check if the next lane is clear to change
+            std::vector<int> candidate_lanes = {max(0,lane-1), min(2,lane+1)};
+            for (const int& candidate_lane : candidate_lanes) // access by const reference
+            {
+              if(candidate_lane == lane)
+                continue;
+              // find number of cars in the right lane within a certain perimeter.
+              int block_count = 0;
+              for(int i = 0; i < sensor_fusion.size(); i++)
+              {
+                float d = sensor_fusion[i][6];
+                if(d < (2+4*candidate_lane+2) && d > (2+4*candidate_lane-2))
                 {
-                  lane--;
+                  double check_car_s = sensor_fusion[i][5];
+                  // Check if there are no cars too close for comfort coming from the back
+                  if((check_car_s < car_s) && ((car_s - check_car_s)<25))
+                    block_count++;
+                  // Check if there are no cars too close for comfort in the front
+                  else if((check_car_s > car_s) && ((check_car_s - car_s)<40))
+                    block_count++;
                 }
+              }
+              if(block_count == 0)
+              {
+                std::cout << "Lane " << candidate_lane << " clear!!!" << std::endl;
+                lane = candidate_lane;
+                too_close = false;
+                target_vel = 49.85;
               }
             }
           }
@@ -385,13 +417,10 @@ int main() {
 
           for (int i = 1; i <= 50 - previous_path_x.size(); i++) {
             if(too_close)
-            {
-              ref_vel -= 0.224;
-            }
-            else if(ref_vel < 49.5)
-            {
-              ref_vel += 0.224;
-            }
+              ref_vel -= 0.112;
+            else if(ref_vel <= target_vel)
+              ref_vel += 0.112;
+
             double N = (target_dist / (0.02 * ref_vel / 2.24));
             double x_point = x_add_on + (target_x) / N;
             double y_point = s(x_point);
