@@ -257,7 +257,7 @@ int main() {
 
               check_car_s += ((double)prev_size*0.02*check_speed); // if using previous points can prohect s value out
               // check s values greater than min and s gap
-              if((check_car_s > car_s) && ((check_car_s - car_s)<60))
+              if((check_car_s > car_s) && ((check_car_s - car_s)<40))
               {
                 // flag to try to change lanes
                 too_close = true;
@@ -293,7 +293,7 @@ int main() {
               }
               if(block_count == 0)
               {
-                std::cout << "Lane " << candidate_lane << " clear!!!" << std::endl;
+//                std::cout << "Lane " << candidate_lane << " clear!!!" << std::endl;
                 lane = candidate_lane;
                 too_close = false;
                 target_vel = 49.5;

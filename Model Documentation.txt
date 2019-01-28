@@ -1,0 +1,16 @@
+The solution is mostly based on the one given in the walkthrough.
+The only change is the line changing logic carried out when the
+current lane becomes congested (Line 270-302).
+
+The lanes next to the current lane is checked to see if any of them are
+clear from vehicles. This is done by implementing a counter, that is
+incremented for each vehicle closer than a certain threshold. Both
+the front side and rear side are considered. However, a higher threshold 
+is considered for the front side, because the intention is to accelerate
+as long as possible, and there is no point of changing lanes, if we are 
+going to run into another traffic block soon.
+
+If a clear lane is found in either side of the current lane, the reference
+velocity is set to just under the maximum (49.5). If there is no clear lane,
+that can be changed into, the velocity of the vehicle immediately in front
+of the vehicle is set as the target velocity, and the current lane is maintained.
