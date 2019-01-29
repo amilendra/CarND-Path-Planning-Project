@@ -19,7 +19,9 @@ using json = nlohmann::json;
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
-
+const double SPEED_LIMIT = 50.0;
+const double DECEL_STEP = 0.112;
+const double MAX_SPEED = SPEED_LIMIT - DECEL_STEP;
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
 // else the empty string "" will be returned.
@@ -193,13 +195,13 @@ int main() {
   int lane = 1;
 
   // Have a reference velocity to target
-  double ref_vel = 0;  // mph
-  double target_vel = 49.5;  // mph
+  double ref_vel = 0;             // mph
+  double target_vel = MAX_SPEED;  // mph
 
   h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
-               &map_waypoints_dx, &map_waypoints_dy, &lane,
-               &ref_vel, &target_vel](uWS::WebSocket<uWS::SERVER> ws, char *data,
-                         size_t length, uWS::OpCode opCode) {
+               &map_waypoints_dx, &map_waypoints_dy, &lane, &ref_vel,
+               &target_vel](uWS::WebSocket<uWS::SERVER> ws, char *data,
+                            size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -237,68 +239,81 @@ int main() {
 
           int prev_size = previous_path_x.size();
 
-          if(prev_size > 0)
-          {
+          if (prev_size > 0) {
             car_s = end_path_s;
           }
           bool too_close = false;
 
           // find ref_v to use
-          for(int i = 0; i < sensor_fusion.size(); i++)
-          {
+          for (int i = 0; i < sensor_fusion.size(); i++) {
             // car is in my lane
             float d = sensor_fusion[i][6];
-            if(d < (2+4*lane+2) && d > (2+4*lane-2))
-            {
+            if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2)) {
               double vx = sensor_fusion[i][3];
               double vy = sensor_fusion[i][4];
-              double check_speed = sqrt(vx*vx+vy*vy);
+              double check_speed = sqrt(vx * vx + vy * vy);
               double check_car_s = sensor_fusion[i][5];
 
-              check_car_s += ((double)prev_size*0.02*check_speed); // if using previous points can prohect s value out
+              check_car_s += ((double)prev_size * 0.02 *
+                              check_speed);  // if using previous points can
+                                             // prohect s value out
               // check s values greater than min and s gap
-              if((check_car_s > car_s) && ((check_car_s - car_s)<40))
-              {
+              if ((check_car_s > car_s) && ((check_car_s - car_s) < 20)) {
                 // flag to try to change lanes
                 too_close = true;
-                if(target_vel > check_car_s)
-                  target_vel = check_car_s;
+                if (target_vel > check_speed) target_vel = check_speed;
               }
             }
           }
 
-          if(too_close)
-          {
+          // Try to change lanes if,
+          //   1. The current lane is congested, or,
+          //   2. The current lane is not Lane 1.
+          //      Being in Lane 1 will maximize our car's probability of
+          //      finding an empty lane (there are two lanes to choose from)
+          //      if we find ourselves in a traffic jam in the future.
+          if (too_close || lane != 1) {
+            if (ref_vel > target_vel) ref_vel -= DECEL_STEP;
             // check if the next lane is clear to change
-            std::vector<int> candidate_lanes = {max(0,lane-1), min(2,lane+1)};
-            for (const int& candidate_lane : candidate_lanes) // access by const reference
+            std::vector<int> candidate_lanes = {max(0, lane - 1),
+                                                min(2, lane + 1)};
+            for (const int &candidate_lane :
+                 candidate_lanes)  // access by const reference
             {
-              if(candidate_lane == lane)
-                continue;
-              // find number of cars in the right lane within a certain perimeter.
+              if (candidate_lane == lane) continue;
+              // find number of cars in the right lane within a certain
+              // perimeter.
               int block_count = 0;
-              for(int i = 0; i < sensor_fusion.size(); i++)
-              {
+              for (int i = 0; i < sensor_fusion.size(); i++) {
                 float d = sensor_fusion[i][6];
-                if(d < (2+4*candidate_lane+2) && d > (2+4*candidate_lane-2))
-                {
+                if (d < (2 + 4 * candidate_lane + 2) &&
+                    d > (2 + 4 * candidate_lane - 2)) {
                   double check_car_s = sensor_fusion[i][5];
-                  // Check if there are no cars too close for comfort coming from the back
-                  if((check_car_s < car_s) && ((car_s - check_car_s)<25))
+                  // Check if there are no cars too close for comfort coming
+                  // from the back
+                  if ((check_car_s < car_s) && ((car_s - check_car_s) < 30))
                     block_count++;
-                  // Check if there are no cars too close for comfort in the front
-                  else if((check_car_s > car_s) && ((check_car_s - car_s)<40))
+                  // Check if there are no cars too close for comfort in the
+                  // front
+                  else if ((check_car_s > car_s) &&
+                           ((check_car_s - car_s) < 20))
                     block_count++;
                 }
               }
-              if(block_count == 0)
-              {
-//                std::cout << "Lane " << candidate_lane << " clear!!!" << std::endl;
+              if (block_count == 0) {
+                // std::cout << "Lane " << candidate_lane << "
+                // clear!!!" << std::endl;
                 lane = candidate_lane;
                 too_close = false;
-                target_vel = 49.5;
+                target_vel = MAX_SPEED;
+                // Exit the search now if we only want to change to Lane 1,
+                // and not because the lane we are in is congested
+                if (!too_close && candidate_lane == 1) break;
               }
             }
+          } else if (!too_close) {
+            target_vel = MAX_SPEED;
+            if (ref_vel < target_vel) ref_vel += DECEL_STEP;
           }
 
           json msgJson;
@@ -344,7 +359,6 @@ int main() {
           }
           // Use the previous path's end point as starting reference
           else {
-
             // Redefine reference state as previous path end point
             ref_x = previous_path_x[prev_size - 1];
             ref_y = previous_path_y[prev_size - 1];
@@ -416,11 +430,6 @@ int main() {
           double x_add_on = 0;
 
           for (int i = 1; i <= 50 - previous_path_x.size(); i++) {
-            if(too_close)
-              ref_vel -= 0.112;
-            else if(ref_vel <= target_vel)
-              ref_vel += 0.112;
-
             double N = (target_dist / (0.02 * ref_vel / 2.24));
             double x_point = x_add_on + (target_x) / N;
             double y_point = s(x_point);
