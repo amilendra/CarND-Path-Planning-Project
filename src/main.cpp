@@ -19,7 +19,7 @@ using json = nlohmann::json;
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
-const double SPEED_LIMIT = 50.0;
+const double SPEED_LIMIT = 49.9;
 const double DECEL_STEP = 0.112;
 const double MAX_SPEED = SPEED_LIMIT - DECEL_STEP;
 // Checks if the SocketIO event has JSON data.
@@ -273,7 +273,6 @@ int main() {
           //      finding an empty lane (there are two lanes to choose from)
           //      if we find ourselves in a traffic jam in the future.
           if (too_close || lane != 1) {
-            if (ref_vel > target_vel) ref_vel -= DECEL_STEP;
             // check if the next lane is clear to change
             std::vector<int> candidate_lanes = {max(0, lane - 1),
                                                 min(2, lane + 1)};
@@ -311,9 +310,6 @@ int main() {
                 if (!too_close && candidate_lane == 1) break;
               }
             }
-          } else if (!too_close) {
-            target_vel = MAX_SPEED;
-            if (ref_vel < target_vel) ref_vel += DECEL_STEP;
           }
 
           json msgJson;
@@ -430,6 +426,11 @@ int main() {
           double x_add_on = 0;
 
           for (int i = 1; i <= 50 - previous_path_x.size(); i++) {
+            if (too_close || ref_vel > target_vel)
+              ref_vel -= DECEL_STEP;
+            else if (!too_close && ref_vel < target_vel)
+              ref_vel += DECEL_STEP;
+
             double N = (target_dist / (0.02 * ref_vel / 2.24));
             double x_point = x_add_on + (target_x) / N;
             double y_point = s(x_point);
