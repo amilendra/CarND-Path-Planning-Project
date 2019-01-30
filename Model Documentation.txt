@@ -23,3 +23,20 @@ This atcually improved the performance considerably and gives a lap time of unde
 5 mins and 20 secs unless the car gets caught in the middle of a particularly slow
 traffic jam.
 
+Trajectory Generation
+=====================
+The trajectory of the car is a list of 50, (X, Y) coordinates which is passed to the simulator.
+After each 20 ms interval, the simulator moves the car forward to the next point in the trajectory,
+and removing that point from the list. Along with the current telemetry data, the simulator
+passes the remaining points of the previous trajectory back to the program.
+The path planner uses the previous trajectory and the current position of the car for trajectory generation.
+
+Trajectory generation starts by extracting the last 2 X, Y coordinates of the previous trajectory.
+However at the start of the program, the previous trajectory is empty, the current position of the car,
+along with a dummy previous position created by extrapolating the current position backwards using the
+car velocity and yaw, will serve as the last 2 X, Y coordinates of the previous trajectory.
+These two previous points, and 3 more points in the lane that are 30 m, 60 m, and 90 m
+ahead of the current position are passed to the spline module to create a smooth spline.
+The resulting spline is broken up into individual X, Y coordinates, and these points are added to the
+previous path, so that the required 50 (X, Y) coordinates of the trajectory is filled up again.
+This new trajectory is passed to the simulator, and this process is repeated when the next telemetry data is received.
