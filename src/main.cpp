@@ -243,6 +243,7 @@ int main() {
             car_s = end_path_s;
           }
           bool too_close = false;
+          target_vel = MAX_SPEED;
 
           // find ref_v to use
           for (int i = 0; i < sensor_fusion.size(); i++) {
